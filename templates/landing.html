@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accident Detection Model</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/aos@2.3.1/dist/aos.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .navbar {
+            background-color: #007BFF;
+            padding: 15px;
+            text-align: center;
+        }
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            padding: 15px;
+            font-size: 18px;
+        }
+        .navbar a:hover {
+            background-color: #0056b3;
+            border-radius: 5px;
+        }
+        .container {
+            padding: 50px;
+        }
+        .alert-banner {
+            display: none;
+            background-color: red;
+            color: white;
+            padding: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            animation: flash 1s infinite alternate;
+        }
+        @keyframes flash {
+            0% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        .map-container {
+            width: 100%;
+            height: 350px;
+            margin-top: 20px;
+            
+        }
+        .loading {
+            display: none;
+            font-size: 18px;
+            font-weight: bold;
+            color: #007BFF;
+        }
+        .search-box {
+            margin-bottom: 10px;
+            .features {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .search-input{
+            padding: 2px 5px;
+            width: 200px;
+        }
+        }
+        .features {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .feature-box {
+            background: white;
+            padding: 20px;
+            margin: 10px;
+            width: 250px;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            border-radius: 10px;
+        }
+        .feature-box h3 {
+            color: #007BFF;
+        }
+
+        .footer {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            margin-top: 30px;
+        }
+        .footer a {
+            color: #f4f4f4;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <a href="/">Home</a>
+        <a href="/emergency">Emergency</a>
+        <a href="/live-accident">Live Accident</a>
+        <a href="/gps-map">GPS Map</a>
+        <a href="/collision-history">Collision History</a>
+        <a href="/about">About</a>
+    </div>
+    
+    <div class="alert-banner">🚨 New Accident Detected! 🚨</div>
+
+    <div class="content">
+    <div class="container">
+        <h1 data-aos="fade-up">Welcome to the Real-Time Accident Detection</h1>
+        <p data-aos="fade-up">Live updates on accident reports and emergency response.</p>
+        <p class="loading">Fetching real-time data...</p>
+        <canvas id="accidentChart" width="400" height="80"></canvas>
+
+        <div class="features">
+                <div class="feature-box">
+                    <h3>Emergency Services</h3>
+                    <p>Instantly connect with emergency responders in case of an accident.</p>
+                </div>
+                <div class="feature-box">
+                    <h3>Live Accident Detection</h3>
+                    <p>View real-time accident reports and alerts as they happen.</p>
+                </div>
+                <div class="feature-box">
+                    <h3>GPS Mapping</h3>
+                    <p>Track accident locations and navigate safely using an interactive map.</p>
+                </div>
+                <div class="feature-box">
+                    <h3>Collision History</h3>
+                    <p>Access past accident records and analyze incident trends.</p>
+                    </div>
+            </div>
+        </div>
+    </div>
+        
+        <div class="search-box">
+            <input type="text" id="searchLocation" placeholder="Search location" class="search-input" />
+            <button onclick="searchLocation()">Search</button>
+        </div>
+        
+        <div class="map-container" id="map"></div>
+    </div>
+    
+    <script>
+        AOS.init();
+        
+        let map = L.map('map').setView([37.7749, -122.4194], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        function fetchAccidents() {
+            $('.loading').show();
+            $.ajax({
+                url: '/api/accidents', 
+                method: 'GET',
+                success: function(data) {
+                    $('.loading').hide();
+                    map.eachLayer(layer => {
+                        if (!!layer.toGeoJSON) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                    data.forEach(accident => {
+                        let marker = L.marker([accident.lat, accident.lng]).addTo(map);
+                        marker.bindPopup(`<b>Accident Reported</b><br>Location: ${accident.location}`).openPopup();
+                    });
+                    $('.alert-banner').fadeIn(500).delay(5000).fadeOut(500);
+                    updateChart(data.length);
+                }
+            });
+        }
+        
+        function searchLocation() {
+            let location = document.getElementById('searchLocation').value;
+            if (location) {
+                $.get(`https://nominatim.openstreetmap.org/search?format=json&q=${location}`, function(data) {
+                    if (data.length > 0) {
+                        let lat = data[0].lat;
+                        let lon = data[0].lon;
+                        map.setView([lat, lon], 13);
+                    } else {
+                        alert("Location not found");
+                    }
+                });
+            }
+        }
+        
+        function updateChart(accidentCount) {
+            let ctx = document.getElementById('accidentChart').getContext('2d');
+            let accidentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Today'],
+                    datasets: [{
+                        label: 'Accidents Reported',
+                        data: [accidentCount],
+                        backgroundColor: 'rgba(255, 99, 110, 0.2)',
+                        borderColor: 'rgba(255, 99, 110, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        setInterval(fetchAccidents, 10000);
+    </script>
+    <div class="footer">
+        <p>&copy; 2025 Accident Detection System. All Rights Reserved.</p>
+        <p>
+            <a href="/privacy-policy">Privacy Policy</a> |
+            <a href="/terms-of-service">Terms of Service</a> |
+            <a href="/contact">Contact Us</a>
+        </p>
+    </div>
+</body>
+</html> 
